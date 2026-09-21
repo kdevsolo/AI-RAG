@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17                 # pinned major version, not :latest
+    image: pgvector/pgvector:pg17                 # pinned major version, not :latest
     container_name: fastapi_pg         # optional, just a friendlier name
     restart: unless-stopped
     environment:

@@ -32,6 +32,25 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 target_metadata = Base.metadata
 
+CHECKPOINTER_TABLES = {
+    "checkpoints",
+    "checkpoint_blobs",
+    "checkpoint_writes",
+    "checkpoint_migrations",
+}
+
+
+def include_object(object, name, type_, reflected, compare_to):
+    """Keep LangGraph's checkpointer tables out of autogenerate.
+
+    They are created and versioned by AsyncPostgresSaver.setup(), not Alembic.
+    Without this, every `make migration` emits a DROP for all four.
+    """
+    if type_ == "table" and name in CHECKPOINTER_TABLES:
+        return False
+    # autogenerate can't see the hand-written HNSW index
+    return not (type_ == "index" and name.endswith("_hnsw"))
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
@@ -53,6 +72,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
         compare_server_default=True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -78,6 +98,7 @@ def run_migrations_online() -> None:
             target_metadata=target_metadata,
             compare_type=True,
             compare_server_default=True,
+            include_object=include_object,
         )
 
         with context.begin_transaction():

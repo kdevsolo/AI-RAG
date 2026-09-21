@@ -11,3 +11,5 @@ wheels/
 
 # Local environment / secrets
 .env
+
+var/
