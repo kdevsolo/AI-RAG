@@ -23,7 +23,7 @@ All under the existing `users` router (`prefix="/users"`, mounted at
 `/api/v1` by `main.py`), except the auth-specific ones noted below.
 
 - `POST /api/v1/users/login` — **changed.** Verifies credentials and
-  issues tokens. `UserLoginRequest` → `TokenPair`. `200`. Public.
+  issues tokens. `UserLoginRequest` → `LoginResponse`. `200`. Public.
   Currently returns `UserRead`; that is a breaking response change.
 - `POST /api/v1/users/refresh` — exchanges a valid, unrevoked,
   unexpired refresh token for a new access token (and a rotated refresh
@@ -48,6 +48,13 @@ In `src/app/schema/token.py` (new file — these are not `User` shapes):
 - `TokenPair(BaseModel)` — `access_token: str`, `refresh_token: str`,
   `token_type: str = "bearer"`, `expires_in: int` (access token lifetime
   in seconds, so clients need not decode the JWT).
+- `LoginResponse(TokenPair)` — adds `user: UserRead`. Login only: it is
+  the one endpoint that has a user in hand, so it echoes back who the
+  tokens belong to and saves the client an immediate `/me` call. Nested
+  rather than flattened so user fields cannot collide with token fields,
+  and reusing `UserRead` keeps one definition of a public user.
+  `/refresh` deliberately returns a bare `TokenPair` — it receives only a
+  token, so it has no user context to return without an extra query.
 - `RefreshRequest(BaseModel)` — `refresh_token: str`.
 - `TokenPayload(BaseModel)` — decoded claim set for internal validation:
   `sub: str` (the user id as a string), `exp: datetime`,
@@ -96,9 +103,9 @@ drops it), then `make migrate`.
 
 ## Services
 `src/app/services/user_service.py` — change:
-- `login(self, data: UserLoginRequest) -> TokenPair` — was
-  `-> User`. Verifies as today, then delegates to `AuthService` for
-  issuance.
+- `login(self, data: UserLoginRequest) -> LoginResponse` — was
+  `-> User`. Verifies as today, delegates to `AuthService.issue_pair` for
+  issuance, then wraps the pair with the authenticated `UserRead`.
 
 `src/app/services/auth_service.py` (new) — `AuthService`, taking
 `db: Session` in `__init__` like every other service:
@@ -139,13 +146,15 @@ REFRESH_TOKEN_EXPIRE_DAYS=30
 - `src/app/db/models.py` — add the `RefreshToken` model.
 - `src/app/schema/user.py` — no change; listed only to record that it
   was checked and `UserRead` already excludes `password`.
-- `src/app/services/user_service.py` — `login` returns `TokenPair`.
+- `src/app/services/user_service.py` — `login` returns `LoginResponse`.
 - `src/app/api/routes/user_routes.py` — change `login`'s
   `response_model`; add `refresh`, `logout`, `me`.
 - `.env.example` — document the four new keys.
 
 ## Files to create
-- `src/app/schema/token.py` — `TokenPair`, `RefreshRequest`, `TokenPayload`.
+- `src/app/schema/token.py` — `TokenPair`, `LoginResponse`,
+  `RefreshRequest`, `TokenPayload`. Imports `UserRead` from
+  `schema/user.py` (one-way inside the schema layer; no cycle).
 - `src/app/services/auth_service.py` — `AuthService`.
 - `src/app/api/deps.py` — `get_current_user` dependency and the
   `CurrentUser` annotated alias, using FastAPI's `HTTPBearer`.
@@ -167,6 +176,10 @@ and a migrated schema (`make migrate`).
 Success paths:
 - Register then login → `200`, body has `access_token`, `refresh_token`,
   `token_type == "bearer"`, and a positive `expires_in`.
+- Login body carries `user.name` and `user.email`, and no
+  `user.password`.
+- `POST /users/refresh` returns no `user` key (pins the deliberate
+  asymmetry with login).
 - `GET /users/me` with the access token → `200`, correct `email`, and
   **no `password` key in the body**.
 - `POST /users/refresh` with a fresh refresh token → `200`, and the
@@ -231,7 +244,8 @@ Feature-specific:
 - [ ] `uv run pytest tests/test_auth.py` passes with Postgres up.
 - [ ] `POST /api/v1/users/` creates a user → `201`.
 - [ ] `POST /api/v1/users/login` with that user → `200` carrying both
-      tokens; with a wrong password → `401`.
+      tokens plus `user.name` / `user.email` and no `user.password`;
+      with a wrong password → `401`.
 - [ ] `GET /api/v1/users/me` with the access token → `200` and no
       `password` field; with no header → `401`; with the refresh token as
       bearer → `401`.

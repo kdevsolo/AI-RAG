@@ -71,6 +71,8 @@ from an ORM object.
   - `refresh_token: str`
   - `token_type: str = "bearer"`
   - `expires_in: int`
+- `LoginResponse(TokenPair)`
+  - `user: UserRead` — login only; `/refresh` returns a bare `TokenPair`
 - `RefreshRequest(BaseModel)`
   - `refresh_token: str`
 - `TokenPayload(BaseModel)`
@@ -296,7 +298,7 @@ Imports: `HTTPBearer` / `HTTPAuthorizationCredentials` from
 
 Change `login` only:
 ```python
-def login(self, data: UserLoginRequest) -> TokenPair:
+def login(self, data: UserLoginRequest) -> LoginResponse:
     user = self.db.query(User).filter(User.email == data.email).first()
     if not user or not verify_password(data.password, user.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -321,7 +323,7 @@ AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 
 Then:
 - `login_user` — change `response_model=UserRead` to
-  `response_model=TokenPair`. Body unchanged.
+  `response_model=LoginResponse`. Body unchanged.
 - `POST /refresh`, `status_code=200`, `response_model=TokenPair` —
   `def refresh_token(data: RefreshRequest, service: AuthServiceDep)`,
   returns `service.refresh(data.refresh_token)`.
@@ -351,7 +353,7 @@ migrated. Add a module docstring saying so.
 Helper: a function creating a unique user per test —
 `f"jwt-{uuid.uuid4()}@example.com"` with a password satisfying
 `UserCreate.validate_password_strength` (upper + digit + special, ≥6),
-e.g. `"Passw0rd!"` — then logging in and returning the `TokenPair` body.
+e.g. `"Passw0rd!"` — then logging in and returning the `LoginResponse` body.
 Unique emails matter because `users.email` is uniquely indexed and these
 tests commit real rows.
 
