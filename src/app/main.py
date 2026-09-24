@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.api.routes import user_routes
+from app.api.routes import document_routes, user_routes
 from app.core.config import config
 from app.db.session import engine
 
@@ -23,3 +23,4 @@ def health_db():
 
 # Routers
 app.include_router(user_routes.router, prefix="/api/v1")
+app.include_router(document_routes.router, prefix="/api/v1")
