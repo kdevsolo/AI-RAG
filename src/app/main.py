@@ -1,11 +1,33 @@
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.api.routes import document_routes, user_routes
 from app.core.config import config
 from app.db.session import engine
+from app.temporal.client import connect as connect_temporal
 
-app = FastAPI(title=config.app_name, version=config.app_version)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Connected once here, not per request — see app/temporal/client.py.
+    # Non-fatal if Temporal isn't up: the app still serves everything that
+    # doesn't touch it (uploads will fail until it's reachable).
+    if await connect_temporal() is None:
+        logger.warning(
+            "Could not connect to Temporal at %s — document uploads will fail "
+            "until it's reachable (make temporal-up).",
+            config.temporal_host,
+        )
+    yield
+
+
+app = FastAPI(title=config.app_name, version=config.app_version, lifespan=lifespan)
 
 
 @app.get("/health")

@@ -11,7 +11,8 @@ PORT       ?= 8000
 
 .PHONY: help install dev run lint format typecheck test check \
         pre-commit-install pre-commit \
-        db-up db-down db-reset db-shell migration migrate downgrade
+        db-up db-down db-reset db-shell migration migrate downgrade \
+        worker temporal-up
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -66,3 +67,9 @@ migrate: ## Apply all pending migrations
 
 downgrade: ## Roll back the most recent migration
 	uv run alembic downgrade -1
+
+worker: ## Run the Temporal ingestion worker
+	PYTHONPATH=$(APP_DIR) uv run python -m app.temporal.worker
+
+temporal-up: ## Start Temporal server + UI (http://localhost:8080)
+	docker compose up -d temporal-db temporal temporal-ui

@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from app.core.config import config
 from app.db.models import Document
 from app.schema.document import DocumentCreate
+from app.temporal.client import get_client
+from app.temporal.shared import IngestDocumentInput
+from app.temporal.workflows import IngestDocumentWorkflow
 
 
 class DocumentService:
@@ -48,6 +51,20 @@ class DocumentService:
             status="pending",
         )
         self.db.add(document)
+        self.db.commit()
+        self.db.refresh(document)
+
+        # Workflow id is deterministic (not random) so a double-submitted
+        # upload for the same document can't spawn a second, competing
+        # ingestion — Temporal dedupes start_workflow calls by this id.
+        workflow_id = f"ingest-{document.id}"
+        await get_client().start_workflow(
+            IngestDocumentWorkflow.run,
+            IngestDocumentInput(document_id=str(document.id), file_path=document.storage_path),
+            id=workflow_id,
+            task_queue=config.temporal_task_queue,
+        )
+        document.workflow_id = workflow_id
         self.db.commit()
         self.db.refresh(document)
         return document

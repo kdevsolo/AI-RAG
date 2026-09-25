@@ -17,5 +17,33 @@ services:
       timeout: 5s
       retries: 5
 
+  temporal-db:
+    image: postgres:17
+    environment: { POSTGRES_USER: temporal, POSTGRES_PASSWORD: temporal, POSTGRES_DB: temporal }
+    volumes: [ temporal_pgdata:/var/lib/postgresql/data ]
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U temporal -d temporal" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  temporal:
+    image: temporalio/auto-setup:1.29.0   # PIN IT: :latest ships breaking schema changes
+    depends_on: { temporal-db: { condition: service_healthy } }
+    environment:
+      - DB=postgres12        # driver identifier, NOT a version claim. Correct for PG17.
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-db
+    ports: [ "7233:7233" ]
+
+  temporal-ui:
+    image: temporalio/ui:2.42.1   # 2.42.0 was never published; nearest real patch to the pin
+    depends_on: [ temporal ]
+    environment: [ TEMPORAL_ADDRESS=temporal:7233 ]
+    ports: [ "8080:8080" ]
+
 volumes:
   pgdata:                              # declares the named volume
+  temporal_pgdata:                     # declares Temporal's own named volume
